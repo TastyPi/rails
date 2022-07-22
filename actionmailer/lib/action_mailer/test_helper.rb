@@ -124,12 +124,19 @@ module ActionMailer
     #     end
     #   end
     def assert_enqueued_email_with(mailer, method, args: nil, queue: ActionMailer::Base.deliver_later_queue_name || "default", &block)
-      args = if args.is_a?(Hash)
+      job_args = if args.is_a?(Hash)
         [mailer.to_s, method.to_s, "deliver_now", params: args, args: []]
+      elsif args.respond_to?(:call)
+        ->(actual_args) do
+          actual_args.size == 4 &&
+            [mailer.to_s, method.to_s, "deliver_now"] == actual_args[0, 3] &&
+            actual_args[3].except(:params) == {args: []} &&
+            args.call(actual_args.dig(3, :params))
+        end
       else
         [mailer.to_s, method.to_s, "deliver_now", args: Array(args)]
       end
-      assert_enqueued_with(job: mailer.delivery_job, args: args, queue: queue.to_s, &block)
+      assert_enqueued_with(job: mailer.delivery_job, args: job_args, queue: queue.to_s, &block)
     end
 
     # Asserts that no emails are enqueued for later delivery.
