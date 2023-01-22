@@ -271,11 +271,15 @@ module Rails
     #     Rails.application.config_for(:example)[:foo][:bar]
     #     # => { baz: 1, qux: 2 }
     def config_for(name, env: Rails.env)
-      yaml = name.is_a?(Pathname) ? name : Pathname.new("#{paths["config"].existent.first}/#{name}.yml")
-
-      if yaml.exist?
+      yamls = name.is_a?(Pathname) ? [name] : paths["config"].existent.map { |path| Pathname.new(path).join("#{name}.yml") }
+      yamls = yamls.filter(&:file?)
+      
+      if yamls.present?
         require "erb"
-        all_configs    = ActiveSupport::ConfigurationFile.parse(yaml).deep_symbolize_keys
+        all_configs = yamls
+          .map { |yaml| ActiveSupport::ConfigurationFile.parse(yaml) }
+          .map(&:deep_symbolize_keys)
+          .reduce(&:deep_merge)
         config, shared = all_configs[env.to_sym], all_configs[:shared]
 
         if shared
@@ -293,7 +297,7 @@ module Rails
 
         config
       else
-        raise "Could not load configuration. No such file - #{yaml}"
+        raise "Could not load configuration. No such file - #{name.is_a?(PathName) ? name : "configs/#{name}.yml"}"
       end
     end
 
